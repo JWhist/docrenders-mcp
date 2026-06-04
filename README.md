@@ -67,7 +67,7 @@ Once configured, you can ask Claude things like:
 | `letter` | sender_name, recipient_name, date, body, signature_name |
 | `proposal` | title, client, date, prepared_by, sections |
 
-See [docs.docrenders.com](https://docrenders.com/docs.html#built-in-templates) for full field reference.
+See [docrenders.com/docs](https://docrenders.com/docs#built-in-templates) for full field reference.
 
 ## Development
 
