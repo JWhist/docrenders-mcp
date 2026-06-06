@@ -1,6 +1,6 @@
 {
   "name": "docrenders-mcp",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "MCP server for DocRenders — generate PDFs from Claude and any MCP-compatible AI agent",
   "main": "dist/index.js",
   "bin": {
@@ -10,8 +10,17 @@
     "build": "tsc",
     "start": "node dist/index.js"
   },
-  "files": ["dist", "README.md"],
-  "keywords": ["mcp", "pdf", "docrenders", "claude", "ai"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "mcp",
+    "pdf",
+    "docrenders",
+    "claude",
+    "ai"
+  ],
   "author": "Jordan Whistler",
   "license": "MIT",
   "dependencies": {
