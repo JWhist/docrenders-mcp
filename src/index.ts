@@ -48,8 +48,8 @@ const TEMPLATES: Record<string, { description: string; required: string[]; optio
   },
   "woo-invoice": {
     description: "WooCommerce order invoice with shop details, billing address, line items, and payment info",
-    required: ["order_number", "invoice_number", "invoice_date", "shop_name", "billing_name"],
-    optional: ["due_date", "shop_email", "shop_address", "billing_email", "billing_address", "items", "subtotal", "tax", "total", "payment_method", "order_status", "notes"],
+    required: ["order_number", "invoice_number", "invoice_date", "shop_name", "billing_name", "total"],
+    optional: ["due_date", "order_date", "shop_email", "shop_address", "shop_vat_id", "billing_email", "billing_address", "billing_phone", "billing_vat_id", "shipping_address", "items", "subtotal", "shipping_cost", "tax_lines", "discount", "payment_method", "shipping_method", "show_sku", "show_tax_columns", "notes", "footer_text", "logo"],
   },
 };
 
@@ -106,18 +106,23 @@ server.tool(
     html: z.string().optional().describe("Raw HTML content to render. Alternative to markdown."),
     template: z.enum(["invoice", "woo-invoice", "post", "receipt", "resume", "ai-summary", "report", "letter", "proposal"]).optional()
       .describe("Built-in template to apply for styling. Use render_template instead if you want to inject structured data."),
+    filename: z.string().optional().describe("Name of the stored PDF file (e.g. \"invoice-123.pdf\"). Defaults to \"render.pdf\"."),
     format: z.enum(["A4", "Letter", "Legal"]).optional().default("A4").describe("Page size"),
     landscape: z.boolean().optional().default(false).describe("Landscape orientation"),
+    margin_top: z.string().optional().describe("Top margin as a CSS length (e.g. \"1in\", \"20mm\"). Defaults to \"1in\"."),
+    margin_right: z.string().optional().describe("Right margin. Defaults to \"1in\"."),
+    margin_bottom: z.string().optional().describe("Bottom margin. Defaults to \"1in\"."),
+    margin_left: z.string().optional().describe("Left margin. Defaults to \"1in\"."),
   },
-  async ({ markdown, html, template, format, landscape }) => {
+  async ({ markdown, html, template, filename, format, landscape, margin_top, margin_right, margin_bottom, margin_left }) => {
     if (!markdown && !html) {
       return { content: [{ type: "text", text: "Error: provide either markdown or html" }], isError: true };
     }
     try {
       const result = await callApi("/render", {
-        markdown, html, template,
+        markdown, html, template, filename,
         output: "url",
-        options: { format, landscape },
+        options: { format, landscape, margin_top, margin_right, margin_bottom, margin_left },
       }) as { url: string; expires_at: string; render_time_ms: number };
       return {
         content: [{
@@ -138,15 +143,20 @@ server.tool(
     template: z.enum(["invoice", "woo-invoice", "post", "receipt", "resume", "ai-summary", "report", "letter", "proposal"])
       .describe("The template to use"),
     data: z.record(z.string(), z.unknown()).describe("Data fields for the template. Required and optional fields vary by template — call list_templates to see them."),
+    filename: z.string().optional().describe("Name of the stored PDF file (e.g. \"invoice-123.pdf\"). Defaults to \"render.pdf\"."),
     format: z.enum(["A4", "Letter", "Legal"]).optional().default("A4").describe("Page size"),
     landscape: z.boolean().optional().default(false).describe("Landscape orientation"),
+    margin_top: z.string().optional().describe("Top margin as a CSS length (e.g. \"1in\", \"20mm\"). Defaults to \"1in\"."),
+    margin_right: z.string().optional().describe("Right margin. Defaults to \"1in\"."),
+    margin_bottom: z.string().optional().describe("Bottom margin. Defaults to \"1in\"."),
+    margin_left: z.string().optional().describe("Left margin. Defaults to \"1in\"."),
   },
-  async ({ template, data, format, landscape }) => {
+  async ({ template, data, filename, format, landscape, margin_top, margin_right, margin_bottom, margin_left }) => {
     try {
       const result = await callApi("/render", {
-        template, data,
+        template, data, filename,
         output: "url",
-        options: { format, landscape },
+        options: { format, landscape, margin_top, margin_right, margin_bottom, margin_left },
       }) as { url: string; expires_at: string; render_time_ms: number };
       return {
         content: [{
