@@ -5,54 +5,6 @@ import { z } from "zod";
 
 const BASE_URL = "https://www.docrenders.com";
 
-const TEMPLATES: Record<string, { description: string; required: string[]; optional: string[] }> = {
-  invoice: {
-    description: "Professional invoice with line items, totals, sender/recipient blocks, and logo",
-    required: ["name", "date", "total", "items"],
-    optional: ["from", "from_street", "from_city", "from_email", "due_date", "invoice_number", "title", "subtotal", "tax", "notes", "logo"],
-  },
-  receipt: {
-    description: "Payment receipt with merchant, items, totals, and payment method",
-    required: ["merchant", "date", "total", "items"],
-    optional: ["transaction_id", "subtotal", "tax", "payment_method", "notes", "logo"],
-  },
-  resume: {
-    description: "Clean typographic CV layout with sections for experience, education, and skills",
-    required: ["name", "email"],
-    optional: ["phone", "location", "linkedin", "github", "summary", "experience", "education", "skills"],
-  },
-  "ai-summary": {
-    description: "Dark header report with executive summary callout, key findings, and sections — designed for AI-generated analysis",
-    required: ["title", "date", "summary"],
-    optional: ["model", "author", "key_points", "sections"],
-  },
-  report: {
-    description: "Business report with optional executive summary and structured sections",
-    required: ["title", "author", "date", "sections"],
-    optional: ["executive_summary", "logo"],
-  },
-  letter: {
-    description: "Formal business letter with sender, recipient, subject, body, and signature",
-    required: ["sender_name", "recipient_name", "date", "body", "signature_name"],
-    optional: ["sender_address", "recipient_address", "subject", "salutation", "closing"],
-  },
-  proposal: {
-    description: "Project or sales proposal with client details, structured sections, and logo",
-    required: ["title", "client", "date", "prepared_by", "sections"],
-    optional: ["logo"],
-  },
-  post: {
-    description: "WordPress-style blog post with title, author, date, category, tags, featured image, and Markdown body",
-    required: ["title", "author", "date", "content"],
-    optional: ["category", "tags", "featured_image"],
-  },
-  "woo-invoice": {
-    description: "WooCommerce order invoice with shop details, billing address, line items, and payment info",
-    required: ["order_number", "invoice_number", "invoice_date", "shop_name", "billing_name", "total"],
-    optional: ["due_date", "order_date", "shop_email", "shop_address", "shop_vat_id", "billing_email", "billing_address", "billing_phone", "billing_vat_id", "shipping_address", "items", "subtotal", "shipping_cost", "tax_lines", "discount", "payment_method", "shipping_method", "show_sku", "show_tax_columns", "notes", "footer_text", "logo"],
-  },
-};
-
 function getApiKey(): string {
   const key = process.env.DOCRENDERS_API_KEY;
   if (!key) throw new Error("DOCRENDERS_API_KEY environment variable is not set");
@@ -93,9 +45,34 @@ async function callApiGet(path: string): Promise<unknown> {
   return res.json();
 }
 
+interface FieldDef {
+  type: string;
+  required: boolean;
+  description?: string;
+  example?: unknown;
+  ai_hint?: string;
+  item_schema?: Record<string, FieldDef>;
+}
+
+interface TemplateItem {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  tags: string[];
+  version: string;
+  source: string;
+  preview_url?: string | null;
+  fields: Record<string, FieldDef>;
+}
+
+interface ListTemplatesResponse {
+  templates: TemplateItem[];
+}
+
 const server = new McpServer({
   name: "docrenders",
-  version: "1.0.0",
+  version: "0.4.0",
 });
 
 server.tool(
@@ -104,8 +81,8 @@ server.tool(
   {
     markdown: z.string().optional().describe("Markdown content to render (GFM supported)"),
     html: z.string().optional().describe("Raw HTML content to render. Alternative to markdown."),
-    template: z.enum(["invoice", "woo-invoice", "post", "receipt", "resume", "ai-summary", "report", "letter", "proposal"]).optional()
-      .describe("Built-in template to apply for styling. Use render_template instead if you want to inject structured data."),
+    template: z.string().optional()
+      .describe("Built-in template name to apply for styling (e.g. \"invoice\"). Use render_template instead if you want to inject structured data."),
     filename: z.string().optional().describe("Name of the stored PDF file (e.g. \"invoice-123.pdf\"). Defaults to \"render.pdf\"."),
     format: z.enum(["A4", "Letter", "Legal"]).optional().default("A4").describe("Page size"),
     landscape: z.boolean().optional().default(false).describe("Landscape orientation"),
@@ -138,11 +115,11 @@ server.tool(
 
 server.tool(
   "render_template",
-  "Generate a PDF from a built-in DocRenders template by passing structured data. The template provides the document layout and styling. Use list_templates to see available templates and their required fields.",
+  "Generate a PDF from a DocRenders template by passing structured data. The template provides the document layout and styling. Use list_templates to see available templates and their required fields, or get_template for a specific template's schema.",
   {
-    template: z.enum(["invoice", "woo-invoice", "post", "receipt", "resume", "ai-summary", "report", "letter", "proposal"])
-      .describe("The template to use"),
-    data: z.record(z.string(), z.unknown()).describe("Data fields for the template. Required and optional fields vary by template — call list_templates to see them."),
+    template: z.string()
+      .describe("Template name (e.g. \"invoice\", \"resume\"). Use list_templates to see all available templates."),
+    data: z.record(z.string(), z.unknown()).describe("Data fields for the template. Required and optional fields vary by template — call get_template to see the schema."),
     filename: z.string().optional().describe("Name of the stored PDF file (e.g. \"invoice-123.pdf\"). Defaults to \"render.pdf\"."),
     format: z.enum(["A4", "Letter", "Legal"]).optional().default("A4").describe("Page size"),
     landscape: z.boolean().optional().default(false).describe("Landscape orientation"),
@@ -172,20 +149,106 @@ server.tool(
 
 server.tool(
   "list_templates",
-  "List all available DocRenders built-in templates with their required and optional data fields.",
-  {},
-  async () => {
-    const lines: string[] = ["# DocRenders Templates\n"];
-    for (const [name, info] of Object.entries(TEMPLATES)) {
-      lines.push(`## ${name}`);
-      lines.push(info.description);
-      lines.push(`\n**Required fields:** ${info.required.join(", ")}`);
-      if (info.optional.length) {
-        lines.push(`**Optional fields:** ${info.optional.join(", ")}`);
+  "List all available DocRenders templates with their categories, tags, and field schemas. Supports optional filtering by category or tag.",
+  {
+    category: z.string().optional().describe("Filter by category (e.g. \"Business\", \"Technical\", \"Personal\")"),
+    tag: z.string().optional().describe("Filter by tag (e.g. \"billing\", \"ai\", \"career\")"),
+  },
+  async ({ category, tag }) => {
+    try {
+      let path = "/templates";
+      const params = new URLSearchParams();
+      if (category) params.set("category", category);
+      if (tag) params.set("tag", tag);
+      if (params.toString()) path += `?${params.toString()}`;
+
+      const resp = await callApiGet(path) as ListTemplatesResponse;
+      const templates = resp.templates ?? [];
+
+      if (templates.length === 0) {
+        return { content: [{ type: "text", text: "No templates found matching the given filters." }] };
       }
-      lines.push("");
+
+      const lines: string[] = ["# DocRenders Templates\n"];
+      for (const t of templates) {
+        lines.push(`## ${t.name} (\`${t.id}\`)`);
+        lines.push(`*${t.category}* | Version ${t.version}`);
+        lines.push(t.description);
+        if (t.tags.length) lines.push(`Tags: ${t.tags.join(", ")}`);
+        if (t.preview_url) lines.push(`Preview: ${t.preview_url}`);
+
+        const required = Object.entries(t.fields).filter(([, f]) => f.required).map(([k]) => k);
+        const optional = Object.entries(t.fields).filter(([, f]) => !f.required).map(([k]) => k);
+        if (required.length) lines.push(`\n**Required fields:** ${required.join(", ")}`);
+        if (optional.length) lines.push(`**Optional fields:** ${optional.join(", ")}`);
+        lines.push("");
+      }
+      return { content: [{ type: "text", text: lines.join("\n") }] };
+    } catch (err) {
+      return { content: [{ type: "text", text: String(err) }], isError: true };
     }
-    return { content: [{ type: "text", text: lines.join("\n") }] };
+  }
+);
+
+server.tool(
+  "get_template",
+  "Get the full field schema for a specific DocRenders template, including field types, descriptions, and examples.",
+  {
+    name: z.string().describe("Template name (e.g. \"invoice\", \"resume\")"),
+  },
+  async ({ name }) => {
+    try {
+      const t = await callApiGet(`/templates/${encodeURIComponent(name)}`) as TemplateItem;
+      const lines: string[] = [
+        `# ${t.name}`,
+        `*${t.category}* | Version ${t.version}`,
+        t.description,
+        "",
+        "## Fields",
+      ];
+      for (const [fieldName, field] of Object.entries(t.fields)) {
+        const req = field.required ? "required" : "optional";
+        const ex = field.example !== undefined ? ` — example: \`${JSON.stringify(field.example)}\`` : "";
+        const hint = field.ai_hint ? ` *(${field.ai_hint})*` : "";
+        lines.push(`- **${fieldName}** (\`${field.type}\`, ${req}): ${field.description ?? ""}${ex}${hint}`);
+        if (field.item_schema) {
+          for (const [subName, subField] of Object.entries(field.item_schema)) {
+            const subReq = subField.required ? "required" : "optional";
+            lines.push(`  - **${subName}** (\`${subField.type}\`, ${subReq}): ${subField.description ?? ""}`);
+          }
+        }
+      }
+      if (t.tags.length) {
+        lines.push("", `Tags: ${t.tags.join(", ")}`);
+      }
+      return { content: [{ type: "text", text: lines.join("\n") }] };
+    } catch (err) {
+      return { content: [{ type: "text", text: String(err) }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "render_template_preview",
+  "Generate a preview PDF for a DocRenders template using its built-in preview_fields data. Returns a signed download URL. Previews are cached — repeated calls for the same template return instantly. Does not count against your render quota.",
+  {
+    template: z.string().describe("Template name (e.g. \"invoice\", \"resume\") or user template ID (tpl_…)"),
+    data: z.record(z.string(), z.unknown()).optional().describe("Optional data overrides. Omit to use the template's built-in preview_fields."),
+  },
+  async ({ template, data }) => {
+    try {
+      const result = await callApi(`/templates/${encodeURIComponent(template)}/preview`, {
+        ...(data ? { data } : {}),
+      }) as { url: string; expires_at: string };
+      return {
+        content: [{
+          type: "text",
+          text: `Preview PDF ready.\n\nDownload URL: ${result.url}\nExpires: ${result.expires_at}`,
+        }],
+      };
+    } catch (err) {
+      return { content: [{ type: "text", text: String(err) }], isError: true };
+    }
   }
 );
 

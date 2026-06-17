@@ -1,6 +1,6 @@
 {
   "name": "docrenders-mcp",
-  "version": "0.1.5",
+  "version": "0.4.0",
   "description": "MCP server for DocRenders — generate PDFs from Claude and any MCP-compatible AI agent",
   "main": "dist/index.js",
   "bin": {
